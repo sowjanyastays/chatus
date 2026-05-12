@@ -45,7 +45,7 @@ export const onMessageCreated = onDocumentCreated(
 
     const promises: Promise<unknown>[] = [];
 
-    // FCM for web PWA
+    // FCM for web PWA — icon/vibration handled by the service worker push handler
     if (fcmWebToken) {
       promises.push(
         getMessaging().send({
@@ -53,12 +53,7 @@ export const onMessageCreated = onDocumentCreated(
           notification: { title: senderName, body: messageBody },
           data: { conversationId },
           webpush: {
-            notification: {
-              icon: 'https://YOUR_DOMAIN/icon-192.png',
-              badge: 'https://YOUR_DOMAIN/icon-192.png',
-              vibrate: [200, 100, 200] as unknown as string,
-            },
-            fcmOptions: { link: `/chat/${conversationId}` },
+            headers: { Urgency: 'high' },
           },
         }).catch(e => console.warn('[FCM] Web push failed:', e)),
       );
