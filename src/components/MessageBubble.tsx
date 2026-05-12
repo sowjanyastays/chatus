@@ -4,7 +4,13 @@ import { decryptFile, unwrapFileKey } from '../services/crypto';
 import { loadPrivateKey } from '../services/keyStore';
 import { formatMessageTime } from '../utils/formatTime';
 
-type Props = { message: Message; isMine: boolean; partnerPublicKey: string; searchTerm?: string };
+type Props = {
+  message: Message;
+  isMine: boolean;
+  partnerPublicKey: string;
+  searchTerm?: string;
+  onLongPress?: () => void;
+};
 
 function highlightText(text: string, term: string) {
   if (!term.trim()) return <>{text}</>;
@@ -20,12 +26,28 @@ function highlightText(text: string, term: string) {
   );
 }
 
-export default function MessageBubble({ message, isMine, partnerPublicKey, searchTerm = '' }: Props) {
+export default function MessageBubble({ message, isMine, partnerPublicKey, searchTerm = '', onLongPress }: Props) {
   const [decryptedUrl, setDecryptedUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function startLongPress() {
+    if (!onLongPress) return;
+    longPressTimer.current = setTimeout(() => { onLongPress(); }, 600);
+  }
+
+  function cancelLongPress() {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+  }
+
+  function handleContextMenu(e: React.MouseEvent) {
+    if (!onLongPress) return;
+    e.preventDefault();
+    onLongPress();
+  }
 
   async function decryptMedia(mimeType: string): Promise<string | null> {
     if (decryptedUrl) return decryptedUrl;
@@ -78,31 +100,53 @@ export default function MessageBubble({ message, isMine, partnerPublicKey, searc
   }
 
   const time = formatMessageTime(message.createdAt);
-
-  // Figma: sent = #007aff, recv = #31353d
-  // Figma radii: sent = [20,20,4,20], recv = [20,20,20,4]
   const sentBg = '#007aff';
   const recvBg = '#31353d';
+
+  // Deleted message
+  if (message.isDeleted) {
+    return (
+      <div className={`flex mb-2 ${isMine ? 'justify-end' : 'justify-start'}`}>
+        <div
+          className="px-4 py-2 rounded-[12px] border border-ch-border"
+          style={{ backgroundColor: '#1c2028' }}
+        >
+          <p className="text-[14px] italic text-ch-sub">Message deleted</p>
+        </div>
+      </div>
+    );
+  }
 
   if (message.type === 'text') {
     return (
       <div className={`flex mb-2 ${isMine ? 'justify-end' : 'justify-start'}`}>
         <div
-          className={isMine ? 'bubble-sent' : 'bubble-recv'}
+          className={`${isMine ? 'bubble-sent' : 'bubble-recv'} max-w-[78%] sm:max-w-[65%]`}
           style={{
             backgroundColor: isMine ? sentBg : recvBg,
             padding: '8px 16px',
-            maxWidth: '78%',
           }}
+          onTouchStart={isMine ? startLongPress : undefined}
+          onTouchEnd={isMine ? cancelLongPress : undefined}
+          onTouchMove={isMine ? cancelLongPress : undefined}
+          onContextMenu={isMine ? handleContextMenu : undefined}
         >
-          <p className="text-[17px] leading-[1.4] whitespace-pre-wrap break-words"
+          <p className="text-[15px] sm:text-[17px] leading-[1.4] whitespace-pre-wrap break-words"
             style={{ color: isMine ? '#ffffff' : '#e0e2ed' }}>
             {searchTerm ? highlightText(message.text ?? '', searchTerm) : message.text}
           </p>
-          <p className="text-[11px] mt-1 text-right"
-            style={{ color: isMine ? 'rgba(255,255,255,0.6)' : '#c1c6d7' }}>
-            {time}
-          </p>
+          <div className="flex items-center justify-end gap-1 mt-1">
+            {message.editedAt && (
+              <span className="text-[10px] italic opacity-60"
+                style={{ color: isMine ? 'rgba(255,255,255,0.6)' : '#c1c6d7' }}>
+                edited
+              </span>
+            )}
+            <p className="text-[11px]"
+              style={{ color: isMine ? 'rgba(255,255,255,0.6)' : '#c1c6d7' }}>
+              {time}
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -111,14 +155,14 @@ export default function MessageBubble({ message, isMine, partnerPublicKey, searc
   if (message.type === 'image') {
     return (
       <div className={`flex mb-2 ${isMine ? 'justify-end' : 'justify-start'}`}>
-        <div className="w-52 rounded-[20px] overflow-hidden relative"
-          style={{ border: '1px solid #414755' }}>
+        <div className="rounded-[20px] overflow-hidden relative"
+          style={{ border: '1px solid #414755', width: 'min(208px, 60vw)' }}>
           {decryptedUrl ? (
-            <img src={decryptedUrl} alt="photo" className="w-52 h-52 object-cover" />
+            <img src={decryptedUrl} alt="photo" className="w-full object-cover" style={{ maxHeight: 260 }} />
           ) : (
             <button
               onClick={() => decryptMedia('image/jpeg')}
-              className="w-52 h-44 flex flex-col items-center justify-center gap-2"
+              className="w-full flex flex-col items-center justify-center gap-2 py-10"
               style={{ backgroundColor: recvBg }}
             >
               {loading
@@ -139,14 +183,14 @@ export default function MessageBubble({ message, isMine, partnerPublicKey, searc
   if (message.type === 'video') {
     return (
       <div className={`flex mb-2 ${isMine ? 'justify-end' : 'justify-start'}`}>
-        <div className="w-48 rounded-[20px] overflow-hidden relative"
-          style={{ border: '1px solid #414755' }}>
+        <div className="rounded-[20px] overflow-hidden relative"
+          style={{ border: '1px solid #414755', width: 'min(192px, 55vw)' }}>
           {decryptedUrl ? (
-            <video src={decryptedUrl} controls className="w-48" style={{ maxHeight: 280 }} />
+            <video src={decryptedUrl} controls className="w-full" style={{ maxHeight: 280 }} />
           ) : (
             <button
               onClick={() => decryptMedia('video/mp4')}
-              className="w-48 h-48 flex flex-col items-center justify-center gap-2 relative"
+              className="w-full flex flex-col items-center justify-center gap-2 relative py-12"
               style={{ backgroundColor: '#000' }}
             >
               <div className="w-12 h-12 rounded-full border border-white/40 flex items-center justify-center"
@@ -155,10 +199,6 @@ export default function MessageBubble({ message, isMine, partnerPublicKey, searc
                   ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   : <svg width="14" height="18" viewBox="0 0 14 18" fill="white"><path d="M2 1l11 8-11 8V1z" /></svg>}
               </div>
-              <span
-                className="absolute bottom-2 left-2 text-white text-[10px] px-2 py-0.5 rounded"
-                style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
-              >0:00</span>
             </button>
           )}
           <span
@@ -177,11 +217,10 @@ export default function MessageBubble({ message, isMine, partnerPublicKey, searc
           className={`flex items-center gap-3 px-4 py-3 ${isMine ? 'bubble-sent' : 'bubble-recv'}`}
           style={{
             backgroundColor: isMine ? sentBg : recvBg,
-            minWidth: 160,
-            maxWidth: '75%',
+            minWidth: 'min(160px, 50vw)',
+            maxWidth: 'min(75%, 320px)',
           }}
         >
-          {/* Play/pause */}
           <button onClick={toggleAudio} className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
             {loading
               ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -190,7 +229,6 @@ export default function MessageBubble({ message, isMine, partnerPublicKey, searc
                 : <svg width="12" height="14" viewBox="0 0 12 14" fill="white"><path d="M1 1l10 6.5L1 14V1z" /></svg>}
           </button>
 
-          {/* Waveform bars */}
           <div className="flex items-center gap-0.5 flex-1" style={{ minWidth: 60 }}>
             {[8, 16, 20, 12, 24, 16, 8, 20, 12].map((h, i) => (
               <div
@@ -206,7 +244,6 @@ export default function MessageBubble({ message, isMine, partnerPublicKey, searc
             ))}
           </div>
 
-          {/* Duration */}
           <span className="text-[11px] flex-shrink-0" style={{ color: 'rgba(255,255,255,0.7)' }}>
             {message.duration ? `0:${String(Math.round(message.duration)).padStart(2, '0')}` : '0:00'}
           </span>

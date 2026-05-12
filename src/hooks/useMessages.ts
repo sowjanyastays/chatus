@@ -22,6 +22,8 @@ export type Message = {
   readBy: string[];
   ciphertext: string;
   nonce: string;
+  editedAt?: number;
+  isDeleted?: boolean;
 };
 
 export function useMessages(conversationId: string, otherPublicKey: string) {
@@ -61,6 +63,8 @@ export function useMessages(conversationId: string, otherPublicKey: string) {
           readBy: data.readBy ?? [],
           ciphertext: data.ciphertext,
           nonce: data.nonce,
+          editedAt: data.editedAt,
+          isDeleted: data.isDeleted ?? false,
         };
       });
 
