@@ -18,6 +18,7 @@ type Conversation = {
   otherUser: OtherUser;
   lastMessage: { type: string; createdAt: number; senderId: string } | null;
   updatedAt: number;
+  unreadCount: number;
 };
 
 function previewText(lm: Conversation['lastMessage']): string {
@@ -82,6 +83,7 @@ export default function ConversationsPage() {
           otherUser: otherDoc.data() as OtherUser,
           lastMessage: data.lastMessage ?? null,
           updatedAt: data.updatedAt?.toMillis?.() ?? 0,
+          unreadCount: data.unreadCounts?.[user.uid] ?? 0,
         });
       }
       setConversations(convos);
@@ -288,18 +290,29 @@ export default function ConversationsPage() {
                     {/* Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-[16px] font-semibold text-ch-text truncate">
+                        <span className={`text-[16px] truncate ${item.unreadCount > 0 ? 'font-bold text-ch-text' : 'font-semibold text-ch-text'}`}>
                           {item.otherUser.displayName}
                         </span>
-                        {item.lastMessage && (
-                          <span className="text-[12px] text-ch-sub ml-2 flex-shrink-0">
-                            {formatConversationTime(item.lastMessage.createdAt)}
-                          </span>
+                        <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
+                          {item.lastMessage && (
+                            <span className="text-[12px] text-ch-sub">
+                              {formatConversationTime(item.lastMessage.createdAt)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <p className={`text-[14px] truncate text-left flex-1 min-w-0 ${item.unreadCount > 0 ? 'text-ch-text font-medium' : 'text-ch-sub'}`}>
+                          {previewText(item.lastMessage)}
+                        </p>
+                        {item.unreadCount > 0 && (
+                          <div className="ml-2 flex-shrink-0 min-w-[20px] h-5 rounded-full bg-ch-blue flex items-center justify-center px-1">
+                            <span className="text-[11px] font-bold text-[#002e69]">
+                              {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                            </span>
+                          </div>
                         )}
                       </div>
-                      <p className="text-[14px] text-ch-sub truncate text-left">
-                        {previewText(item.lastMessage)}
-                      </p>
                     </div>
                   </button>
                 </li>

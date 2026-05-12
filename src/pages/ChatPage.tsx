@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   doc, getDoc, collection, addDoc, updateDoc, deleteDoc,
-  getDocs, serverTimestamp, writeBatch,
+  getDocs, serverTimestamp, writeBatch, increment,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, auth } from '../services/firebase';
@@ -65,6 +65,14 @@ export default function ChatPage() {
     })();
   }, [conversationId]);
 
+  // Reset my unread count to 0 when I open the chat
+  useEffect(() => {
+    if (!conversationId || !me) return;
+    updateDoc(doc(db, 'conversations', conversationId), {
+      [`unreadCounts.${me.uid}`]: 0,
+    }).catch(() => {});
+  }, [conversationId]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -117,6 +125,7 @@ export default function ChatPage() {
       await updateDoc(doc(db, 'conversations', conversationId!), {
         lastMessage: { type: 'text', createdAt: now, senderId: me.uid },
         updatedAt: serverTimestamp(),
+        [`unreadCounts.${otherUser!.uid}`]: increment(1),
       });
       setText('');
       setReplyTo(null);
@@ -155,6 +164,7 @@ export default function ChatPage() {
       await updateDoc(doc(db, 'conversations', conversationId!), {
         lastMessage: { type, createdAt: now, senderId: me.uid },
         updatedAt: serverTimestamp(),
+        [`unreadCounts.${otherUser.uid}`]: increment(1),
       });
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : String(e));
@@ -186,6 +196,7 @@ export default function ChatPage() {
       await updateDoc(doc(db, 'conversations', conversationId!), {
         lastMessage: { type: 'audio', createdAt: now, senderId: me.uid },
         updatedAt: serverTimestamp(),
+        [`unreadCounts.${otherUser.uid}`]: increment(1),
       });
       setShowVoice(false);
     } catch (e: unknown) {
