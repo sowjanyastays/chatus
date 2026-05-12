@@ -35,8 +35,8 @@ self.addEventListener('push', (event) => {
     event.waitUntil(
       self.registration.showNotification(notification.title ?? 'Chatus', {
         body: notification.body ?? '🔒 New encrypted message',
-        icon: '/icon-192.png',
-        badge: '/icon-192.png',
+        icon: '/chatas.jpg',
+        badge: '/chatas.jpg',
         data,
         tag: data.conversationId ?? 'chatus-message',
         vibrate: [200, 100, 200],

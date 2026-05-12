@@ -24,6 +24,12 @@ export type Message = {
   nonce: string;
   editedAt?: number;
   isDeleted?: boolean;
+  replyTo?: {
+    id: string;
+    senderId: string;
+    type: MessageType;
+    text?: string;
+  };
 };
 
 export function useMessages(conversationId: string, otherPublicKey: string) {
@@ -65,6 +71,7 @@ export function useMessages(conversationId: string, otherPublicKey: string) {
           nonce: data.nonce,
           editedAt: data.editedAt,
           isDeleted: data.isDeleted ?? false,
+          replyTo: data.replyTo,
         };
       });
 

@@ -86,8 +86,8 @@ function GlobalNotifications() {
             const reg = await navigator.serviceWorker.ready;
             await reg.showNotification(title, {
               body,
-              icon: '/icon-192.png',
-              badge: '/icon-192.png',
+              icon: '/chatas.jpg',
+              badge: '/chatas.jpg',
               tag: convId,
               data: { conversationId: convId },
             } as NotificationOptions);

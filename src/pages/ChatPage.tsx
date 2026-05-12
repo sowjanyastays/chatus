@@ -42,6 +42,7 @@ export default function ChatPage() {
   const [actionMenu, setActionMenu] = useState<Message | null>(null);
   const [editingMsg, setEditingMsg] = useState<Message | null>(null);
   const [editText, setEditText] = useState('');
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const editInputRef = useRef<HTMLTextAreaElement>(null);
@@ -111,12 +112,14 @@ export default function ChatPage() {
       const now = Date.now();
       await addDoc(collection(db, 'conversations', conversationId!, 'messages'), {
         senderId: me.uid, type: 'text', ciphertext, nonce, createdAt: now, readBy: [me.uid],
+        ...(replyTo ? { replyTo: { id: replyTo.id, senderId: replyTo.senderId, type: replyTo.type, text: replyTo.type === 'text' ? replyTo.text : undefined } } : {}),
       });
       await updateDoc(doc(db, 'conversations', conversationId!), {
         lastMessage: { type: 'text', createdAt: now, senderId: me.uid },
         updatedAt: serverTimestamp(),
       });
       setText('');
+      setReplyTo(null);
       if (inputRef.current) inputRef.current.style.height = 'auto';
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : String(e));
@@ -404,8 +407,10 @@ export default function ChatPage() {
                   message={item.data}
                   isMine={item.data.senderId === me.uid}
                   partnerPublicKey={otherUser.publicKey}
+                  partnerName={otherUser.displayName}
                   searchTerm={trimmedSearch}
                   onLongPress={() => openActionMenu(item.data)}
+                  onReply={() => { setReplyTo(item.data); setTimeout(() => inputRef.current?.focus(), 50); }}
                 />
               );
             })
@@ -424,6 +429,29 @@ export default function ChatPage() {
           className="flex-shrink-0 bg-ch-bg border-t border-ch-border"
           style={{ paddingBottom: 'max(var(--safe-bottom), 8px)' }}
         >
+          {/* Reply banner */}
+          {replyTo && !showVoice && (
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-ch-border bg-ch-input/40">
+              <div className="w-0.5 self-stretch rounded-full bg-ch-blue flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-semibold text-ch-blue">
+                  {replyTo.senderId === me.uid ? 'You' : otherUser.displayName}
+                </p>
+                <p className="text-[13px] text-ch-sub truncate">
+                  {replyTo.type === 'text' ? replyTo.text
+                    : replyTo.type === 'image' ? '📷 Photo'
+                    : replyTo.type === 'video' ? '🎥 Video'
+                    : '🎤 Voice note'}
+                </p>
+              </div>
+              <button onClick={() => setReplyTo(null)} className="p-1 flex-shrink-0" aria-label="Cancel reply">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M1 1l10 10M11 1L1 11" stroke="#c1c6d7" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+          )}
+
           {showVoice ? (
             <VoiceRecorder onSend={sendVoiceNote} onCancel={() => setShowVoice(false)} />
           ) : (

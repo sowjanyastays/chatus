@@ -14,11 +14,11 @@ export default defineConfig({
       filename: 'sw.ts',
       registerType: 'autoUpdate',
       injectManifest: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,jpg,jpeg,svg,woff,woff2}'],
       },
       manifest: {
-        name: 'Chatus',
-        short_name: 'Chatus',
+        name: 'ChatAS',
+        short_name: 'ChatAS',
         description: 'End-to-end encrypted messaging. Private. Encrypted. Yours.',
         theme_color: '#6C63FF',
         background_color: '#ffffff',
@@ -28,9 +28,9 @@ export default defineConfig({
         scope: '/',
         id: '/',
         icons: [
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: '/chatas.jpg', sizes: '192x192', type: 'image/jpeg' },
+          { src: '/chatas.jpg', sizes: '512x512', type: 'image/jpeg' },
+          { src: '/chatas.jpg', sizes: '512x512', type: 'image/jpeg', purpose: 'maskable' },
         ],
         categories: ['communication', 'social'],
       },
