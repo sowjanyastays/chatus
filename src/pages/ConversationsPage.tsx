@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   collection, query, where, onSnapshot, doc, getDoc,
-  setDoc, serverTimestamp, getDocs, orderBy,
+  setDoc, serverTimestamp, getDocs, orderBy, deleteDoc, writeBatch,
 } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
 import { useAuth } from '../hooks/useAuth';
@@ -44,7 +44,9 @@ export default function ConversationsPage() {
   const [searching, setSearching] = useState(false);
   const [listSearch, setListSearch] = useState('');
   const [toast, setToast] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const me = auth.currentUser;
 
@@ -84,6 +86,30 @@ export default function ConversationsPage() {
       setLoading(false);
     });
   }, [user]);
+
+  function startLongPress(convId: string) {
+    longPressTimer.current = setTimeout(() => setDeleteConfirm(convId), 600);
+  }
+
+  function cancelLongPress() {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+  }
+
+  async function deleteConversation(convId: string) {
+    try {
+      const msgsSnap = await getDocs(collection(db, 'conversations', convId, 'messages'));
+      if (msgsSnap.docs.length > 0) {
+        const batch = writeBatch(db);
+        msgsSnap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+      await deleteDoc(doc(db, 'conversations', convId));
+    } catch {
+      alert('Could not delete conversation.');
+    } finally {
+      setDeleteConfirm(null);
+    }
+  }
 
   function openModal() {
     setModalOpen(true);
@@ -225,6 +251,10 @@ export default function ConversationsPage() {
                 <li key={item.id}>
                   <button
                     onClick={() => navigate(`/chat/${item.id}`)}
+                    onTouchStart={() => startLongPress(item.id)}
+                    onTouchEnd={cancelLongPress}
+                    onTouchMove={cancelLongPress}
+                    onContextMenu={(e) => { e.preventDefault(); setDeleteConfirm(item.id); }}
                     className="w-full flex items-center px-4 py-3 border-b border-ch-border active:bg-ch-input transition-colors"
                     style={{ minHeight: 80 }}
                   >
@@ -287,6 +317,34 @@ export default function ConversationsPage() {
               className="w-full bg-ch-accent disabled:opacity-50 text-[#00285c] font-semibold text-[17px] py-4 rounded-[12px] active:scale-[0.98] transition-transform"
             >
               {searching ? 'Searching…' : 'Start Chat'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete conversation confirmation */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setDeleteConfirm(null)} />
+          <div
+            className="relative bg-ch-card rounded-t-[28px] px-6 pt-4"
+            style={{ paddingBottom: 'max(var(--safe-bottom), 32px)' }}
+          >
+            <div className="w-10 h-1 bg-ch-border rounded-full mx-auto mb-4" />
+            <p className="text-[18px] font-semibold text-ch-text text-center mb-1">Delete Conversation?</p>
+            <p className="text-[14px] text-ch-sub text-center mb-6">All messages will be permanently deleted and cannot be recovered.</p>
+            <button
+              onClick={() => deleteConversation(deleteConfirm)}
+              className="w-full py-4 rounded-[12px] font-semibold text-[17px] mb-3"
+              style={{ backgroundColor: 'rgba(255,75,75,0.15)', color: '#ff4b4b' }}
+            >
+              Delete
+            </button>
+            <button
+              onClick={() => setDeleteConfirm(null)}
+              className="w-full py-4 rounded-[12px] bg-ch-input text-ch-text text-[17px]"
+            >
+              Cancel
             </button>
           </div>
         </div>
