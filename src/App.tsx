@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { ThemeProvider } from './context/ThemeContext';
@@ -109,10 +109,24 @@ function GlobalNotifications() {
   return null;
 }
 
-// Restore private key from IndexedDB into localStorage if missing (runs once).
-initKeyStore();
-
 export default function App() {
+  // Start ready=true if key already in localStorage (avoids flash).
+  // If localStorage was wiped (PWA reinstall), wait for IDB restore before rendering.
+  const [keyReady, setKeyReady] = useState(() => !!localStorage.getItem('chatus_e2ee_private_key'));
+
+  useEffect(() => {
+    if (keyReady) return;
+    initKeyStore().then(() => setKeyReady(true));
+  }, []);
+
+  if (!keyReady) {
+    return (
+      <div className="h-dvh bg-[#10131b] flex items-center justify-center">
+        <div className="w-9 h-9 border-4 border-[#adc6ff] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <ThemeProvider>
       <BrowserRouter>
