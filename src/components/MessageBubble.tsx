@@ -3,7 +3,8 @@ import { Message } from '../hooks/useMessages';
 import { decryptFile, unwrapFileKey } from '../services/crypto';
 import { loadPrivateKey } from '../services/keyStore';
 import { formatMessageTime } from '../utils/formatTime';
-import { auth } from '../services/firebase';
+import { auth, storage } from '../services/firebase';
+import { ref as storRef, getBlob } from 'firebase/storage';
 
 type Props = {
   message: Message;
@@ -110,8 +111,10 @@ export default function MessageBubble({ message, isMine, partnerPublicKey, partn
       if (!mySecretKey) throw new Error('No private key');
       const fileKey = unwrapFileKey(message.wrappedKey, message.keyNonce!, partnerPublicKey, mySecretKey);
       if (!fileKey) throw new Error('Could not unwrap key');
-      const res = await fetch(message.mediaUrl);
-      const encBytes = new Uint8Array(await res.arrayBuffer());
+      // Use Firebase SDK (not bare fetch) so auth credentials are included
+      // and Storage security rules are satisfied.
+      const fileBlob = await getBlob(storRef(storage, message.mediaUrl));
+      const encBytes = new Uint8Array(await fileBlob.arrayBuffer());
       const decBytes = decryptFile(encBytes, fileKey, message.fileNonce!);
       if (!decBytes) throw new Error('Decryption failed');
       const blob = new Blob([(decBytes as Uint8Array<ArrayBuffer>).buffer], { type: mimeType });

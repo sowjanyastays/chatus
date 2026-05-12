@@ -9,6 +9,7 @@ import { useAuth } from '../hooks/useAuth';
 import { getAvatarColor, getInitials } from '../utils/avatar';
 import { formatConversationTime } from '../utils/formatTime';
 import { registerForWebPush, listenForForegroundMessages } from '../services/notifications';
+import { loadPrivateKey } from '../services/keyStore';
 import BottomNav from '../components/BottomNav';
 
 type OtherUser = { uid: string; displayName: string; email: string };
@@ -45,6 +46,7 @@ export default function ConversationsPage() {
   const [listSearch, setListSearch] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const noKey = !loadPrivateKey();
   const inputRef = useRef<HTMLInputElement>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -175,6 +177,24 @@ export default function ConversationsPage() {
       {toast && (
         <div className="fixed top-4 left-4 right-4 z-50 bg-ch-surface text-ch-text px-4 py-3 rounded-2xl shadow-xl text-sm font-medium">
           {toast}
+        </div>
+      )}
+
+      {/* Missing key warning */}
+      {noKey && (
+        <div className="flex-shrink-0 flex items-start gap-3 px-4 py-3 bg-yellow-900/30 border-b border-yellow-700/40"
+             style={{ paddingTop: 'max(var(--safe-top), 12px)' }}>
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="flex-shrink-0 mt-0.5">
+            <path d="M9 1L1 16h16L9 1z" stroke="#facc15" strokeWidth="1.5" strokeLinejoin="round" />
+            <path d="M9 7v4M9 13v.5" stroke="#facc15" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-semibold text-yellow-300">Encryption key missing</p>
+            <p className="text-[12px] text-yellow-200/70 mt-0.5">
+              Your private key was lost (browser storage cleared or app reinstalled).
+              Messages can't be decrypted. Go to <span className="font-semibold">Settings → E2E Encryption → Import Key</span> to restore from your backup.
+            </p>
+          </div>
         </div>
       )}
 

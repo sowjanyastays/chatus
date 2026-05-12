@@ -5,7 +5,7 @@ import { auth, db } from '../services/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../context/ThemeContext';
 import { getInitials, getAvatarColor } from '../utils/avatar';
-import { loadPrivateKey } from '../services/keyStore';
+import { loadPrivateKey, exportPrivateKey, importPrivateKey } from '../services/keyStore';
 import BottomNav from '../components/BottomNav';
 
 // ── Shared UI primitives ─────────────────────────────────────────────────────
@@ -101,6 +101,8 @@ export default function SettingsPage() {
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
     () => ('Notification' in window ? Notification.permission : 'denied'),
   );
+  const [importKeyText, setImportKeyText] = useState('');
+  const [importKeyStatus, setImportKeyStatus] = useState<'idle' | 'ok' | 'err'>('idle');
 
   const displayName = user?.displayName ?? 'User';
   const email = user?.email ?? '';
@@ -152,7 +154,31 @@ export default function SettingsPage() {
     localStorage.setItem('chatus-auto-download', next ? 'true' : 'false');
   }
 
-  const pubKey = loadPrivateKey() ? user?.uid : null; // just a presence check
+  const hasKey = !!loadPrivateKey();
+
+  function handleExportKey() {
+    const key = exportPrivateKey();
+    if (!key) return;
+    const blob = new Blob([JSON.stringify({ version: 1, privateKey: key })], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'chatus-key-backup.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleImportKey() {
+    let raw = importKeyText.trim();
+    // Allow pasting the full JSON object or just the base64 key
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.privateKey) raw = parsed.privateKey;
+    } catch { /* not JSON, treat as raw base64 */ }
+    const ok = importPrivateKey(raw);
+    setImportKeyStatus(ok ? 'ok' : 'err');
+    if (ok) setTimeout(() => { setModal('none'); setImportKeyStatus('idle'); setImportKeyText(''); }, 1200);
+  }
 
   return (
     <div className="h-dvh flex flex-col bg-ch-bg overflow-hidden">
@@ -326,41 +352,78 @@ export default function SettingsPage() {
 
       {/* ── E2E Encryption Modal ── */}
       {modal === 'encryption' && (
-        <Modal title="End-to-End Encryption" onClose={() => setModal('none')}>
-          <div className="bg-ch-input rounded-[12px] p-4 mb-4 flex items-start gap-3">
-            <svg width="20" height="20" className="flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="none">
-              <circle cx="10" cy="10" r="9" stroke="#66BB6A" strokeWidth="1.5" />
-              <path d="M6 10l3 3 5-5" stroke="#66BB6A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+        <Modal title="End-to-End Encryption" onClose={() => { setModal('none'); setImportKeyStatus('idle'); setImportKeyText(''); }}>
+          {/* Status badge */}
+          <div className={`bg-ch-input rounded-[12px] p-4 mb-4 flex items-start gap-3`}>
+            {hasKey ? (
+              <svg width="20" height="20" className="flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="10" r="9" stroke="#66BB6A" strokeWidth="1.5" />
+                <path d="M6 10l3 3 5-5" stroke="#66BB6A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <svg width="20" height="20" className="flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="none">
+                <path d="M10 2L2 17h16L10 2z" stroke="#facc15" strokeWidth="1.5" strokeLinejoin="round" />
+                <path d="M10 8v4M10 14v.5" stroke="#facc15" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            )}
             <div>
-              <p className="text-[15px] font-semibold text-ch-text mb-1">Encryption Active</p>
-              <p className="text-[13px] text-ch-sub leading-relaxed">
-                All messages are encrypted end-to-end using X25519 key exchange and XSalsa20-Poly1305.
-                Only you and your chat partner can read them.
+              <p className="text-[15px] font-semibold text-ch-text mb-0.5">
+                {hasKey ? 'Key present on this device' : 'Private key missing!'}
+              </p>
+              <p className="text-[12px] text-ch-sub leading-relaxed">
+                {hasKey
+                  ? 'All messages are encrypted end-to-end. Only you and your partner can read them.'
+                  : 'Your key was lost. Import a backup below to restore access to your messages.'}
               </p>
             </div>
           </div>
 
-          <div className="bg-ch-input rounded-[12px] p-4 mb-4">
-            <p className="text-[13px] font-medium text-ch-sub mb-1">Your Key Status</p>
-            <p className="text-[15px] text-ch-text">
-              {pubKey ? '🔐 Private key present on this device' : '⚠️ No private key found'}
-            </p>
-            {user?.uid && (
-              <p className="text-[11px] text-ch-sub mt-2 font-mono break-all">UID: {user.uid}</p>
-            )}
-          </div>
+          {/* Export */}
+          {hasKey && (
+            <div className="bg-ch-input rounded-[12px] p-4 mb-3">
+              <p className="text-[13px] font-medium text-ch-sub mb-1">Backup Your Key</p>
+              <p className="text-[12px] text-ch-sub mb-3 leading-relaxed">
+                Save this backup file somewhere safe. If you reinstall the app or clear browser data,
+                you'll need it to restore access to your messages.
+              </p>
+              <button
+                onClick={handleExportKey}
+                className="w-full py-2.5 rounded-[10px] flex items-center justify-center gap-2"
+                style={{ backgroundColor: '#1e3a5f', border: '1px solid #adc6ff44' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M7 1v8M4 6l3 3 3-3M1 11h12v2H1z" stroke="#adc6ff" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span className="text-[14px] font-medium text-ch-blue">Download key backup (.json)</span>
+              </button>
+            </div>
+          )}
 
-          <div className="bg-ch-input rounded-[12px] p-4 mb-6">
-            <p className="text-[13px] font-medium text-ch-sub mb-2">About Linked Devices</p>
-            <p className="text-[13px] text-ch-sub leading-relaxed">
-              Your private key is stored only on this device. Logging in on another device will
-              generate a new key pair — existing messages won't be readable on the new device.
+          {/* Import */}
+          <div className="bg-ch-input rounded-[12px] p-4 mb-4">
+            <p className="text-[13px] font-medium text-ch-sub mb-2">
+              {hasKey ? 'Import / Replace Key' : 'Import Key from Backup'}
             </p>
+            <textarea
+              value={importKeyText}
+              onChange={e => { setImportKeyText(e.target.value); setImportKeyStatus('idle'); }}
+              placeholder='Paste base64 key or full JSON backup…'
+              rows={3}
+              className="w-full bg-ch-bg rounded-[10px] px-3 py-2 text-[12px] font-mono text-ch-text placeholder-ch-sub focus:outline-none focus:ring-2 focus:ring-ch-blue mb-2 resize-none"
+            />
+            {importKeyStatus === 'ok' && <p className="text-[12px] text-green-400 mb-2">✓ Key imported successfully!</p>}
+            {importKeyStatus === 'err' && <p className="text-[12px] text-red-400 mb-2">Invalid key — check the format and try again.</p>}
+            <button
+              onClick={handleImportKey}
+              disabled={!importKeyText.trim()}
+              className="w-full py-2.5 rounded-[10px] bg-ch-blue text-[#002e69] font-semibold text-[14px] disabled:opacity-40"
+            >
+              Import Key
+            </button>
           </div>
 
           <button
-            onClick={() => setModal('none')}
+            onClick={() => { setModal('none'); setImportKeyStatus('idle'); setImportKeyText(''); }}
             className="w-full py-3 rounded-[12px] bg-ch-input text-ch-text text-[17px]"
           >
             Close

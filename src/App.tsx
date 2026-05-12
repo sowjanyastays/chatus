@@ -12,6 +12,7 @@ import GlobalGalleryPage from './pages/GlobalGalleryPage';
 import SettingsPage from './pages/SettingsPage';
 import { db } from './services/firebase';
 import { useAuth } from './hooks/useAuth';
+import { initKeyStore } from './services/keyStore';
 
 function SWNavigationListener() {
   const navigate = useNavigate();
@@ -107,6 +108,9 @@ function GlobalNotifications() {
 
   return null;
 }
+
+// Restore private key from IndexedDB into localStorage if missing (runs once).
+initKeyStore();
 
 export default function App() {
   return (
