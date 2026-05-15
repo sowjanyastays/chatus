@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Message } from '../hooks/useMessages';
 import { decryptFile, unwrapFileKey } from '../services/crypto';
 import { loadPrivateKey } from '../services/keyStore';
@@ -102,7 +102,7 @@ export default function MessageBubble({ message, isMine, partnerPublicKey, partn
 
   // ── Media decryption ────────────────────────────────────────────────────────
 
-  async function decryptMedia(mimeType: string): Promise<string | null> {
+  async function decryptMedia(mimeOverride?: string): Promise<string | null> {
     if (decryptedUrl) return decryptedUrl;
     if (!message.mediaUrl || !message.wrappedKey) return null;
     setLoading(true);
@@ -110,27 +110,42 @@ export default function MessageBubble({ message, isMine, partnerPublicKey, partn
       const mySecretKey = loadPrivateKey();
       if (!mySecretKey) throw new Error('No private key');
       const fileKey = unwrapFileKey(message.wrappedKey, message.keyNonce!, partnerPublicKey, mySecretKey);
-      if (!fileKey) throw new Error('Could not unwrap key');
-      // Use Firebase SDK (not bare fetch) so auth credentials are included
-      // and Storage security rules are satisfied.
+      if (!fileKey) throw new Error('Could not unwrap file key');
+
+      // mediaUrl is either a storage path (new messages) or a download URL (legacy).
+      // storRef handles both transparently.
       const fileBlob = await getBlob(storRef(storage, message.mediaUrl));
       const encBytes = new Uint8Array(await fileBlob.arrayBuffer());
       const decBytes = decryptFile(encBytes, fileKey, message.fileNonce!);
-      if (!decBytes) throw new Error('Decryption failed');
-      const blob = new Blob([(decBytes as Uint8Array<ArrayBuffer>).buffer], { type: mimeType });
+      if (!decBytes) throw new Error('Decryption failed — key mismatch or corrupted data');
+
+      const mime = mimeOverride ?? message.mimeType ?? (
+        message.type === 'image' ? 'image/jpeg'
+        : message.type === 'video' ? 'video/mp4'
+        : 'audio/webm'
+      );
+      // Use slice() to ensure we get exactly the decrypted bytes, not the whole backing buffer.
+      const blob = new Blob([decBytes.slice()], { type: mime });
       const url = URL.createObjectURL(blob);
       setDecryptedUrl(url);
       return url;
     } catch (e: unknown) {
-      alert('Cannot open: ' + (e instanceof Error ? e.message : String(e)));
+      if (!decryptedUrl) alert('Cannot open: ' + (e instanceof Error ? e.message : String(e)));
       return null;
     } finally {
       setLoading(false);
     }
   }
 
+  // Auto-decrypt images as soon as they appear — no "Tap to decrypt" required.
+  useEffect(() => {
+    if (message.type === 'image' && !decryptedUrl) {
+      decryptMedia();
+    }
+  }, [message.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function toggleAudio() {
-    const url = decryptedUrl ?? await decryptMedia(message.mimeType ?? 'audio/webm');
+    const url = decryptedUrl ?? await decryptMedia();
     if (!url) return;
     if (!audioRef.current) {
       const audio = new Audio(url);
@@ -274,14 +289,19 @@ export default function MessageBubble({ message, isMine, partnerPublicKey, partn
           {decryptedUrl ? (
             <img src={decryptedUrl} alt="photo" className="w-full object-cover" style={{ maxHeight: 260 }} />
           ) : (
-            <button
-              onClick={() => decryptMedia('image/jpeg')}
-              className="w-full flex flex-col items-center justify-center gap-2 py-10"
-              style={{ backgroundColor: recvBg }}
-            >
-              {loading ? <div className="w-7 h-7 border-2 border-ch-blue border-t-transparent rounded-full animate-spin" /> : <span className="text-4xl">📷</span>}
-              <span className="text-[12px]" style={{ color: '#c1c6d7' }}>Tap to decrypt</span>
-            </button>
+            <div className="relative w-full" style={{ minHeight: 120, backgroundColor: recvBg }}>
+              {message.thumbnail && (
+                <img
+                  src={message.thumbnail}
+                  alt=""
+                  className="w-full object-cover"
+                  style={{ maxHeight: 260, filter: 'blur(8px)', transform: 'scale(1.06)' }}
+                />
+              )}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin opacity-80" />
+              </div>
+            </div>
           )}
           <span className="absolute bottom-2 right-2 text-white text-[10px] px-2 py-0.5 rounded"
             style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}>{time}</span>
@@ -314,7 +334,7 @@ export default function MessageBubble({ message, isMine, partnerPublicKey, partn
           {decryptedUrl ? (
             <video src={decryptedUrl} controls className="w-full" style={{ maxHeight: 280 }} />
           ) : (
-            <button onClick={() => decryptMedia('video/mp4')}
+            <button onClick={() => decryptMedia()}
               className="w-full flex flex-col items-center justify-center gap-2 relative py-12"
               style={{ backgroundColor: '#000' }}>
               <div className="w-12 h-12 rounded-full border border-white/40 flex items-center justify-center"

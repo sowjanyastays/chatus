@@ -4,12 +4,11 @@ import {
   doc, getDoc, collection, addDoc, updateDoc, deleteDoc,
   getDocs, serverTimestamp, writeBatch, increment,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes } from 'firebase/storage';
 import { db, storage, auth } from '../services/firebase';
 import { useMessages } from '../hooks/useMessages';
 import { encryptMessage, encryptFile, wrapFileKey } from '../services/crypto';
 import { loadPrivateKey } from '../services/keyStore';
-import { uploadEncryptedFile } from '../services/cloudinary';
 import MessageBubble from '../components/MessageBubble';
 import VoiceRecorder from '../components/VoiceRecorder';
 import EmojiPicker from '../components/EmojiPicker';
@@ -17,6 +16,40 @@ import { getInitials } from '../utils/avatar';
 import { formatDateSeparator } from '../utils/formatTime';
 
 type UserProfile = { uid: string; displayName: string; publicKey: string; email: string };
+
+// Resize image to max 1200px, convert to JPEG 0.82, and generate a tiny base64 thumbnail.
+function compressAndThumbnail(file: File): Promise<{ bytes: Uint8Array; thumbnail: string; mimeType: string }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onerror = reject;
+    img.onload = () => {
+      URL.revokeObjectURL(img.src);
+      const MAX = 1200;
+      let w = img.naturalWidth, h = img.naturalHeight;
+      if (w > MAX || h > MAX) {
+        if (w >= h) { h = Math.round(h * MAX / w); w = MAX; }
+        else        { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+
+      // Tiny thumbnail (~100px wide, blurred placeholder stored in Firestore)
+      const TW = 100;
+      const tw = Math.min(w, TW), th = Math.round(h * tw / w);
+      const tc = document.createElement('canvas');
+      tc.width = tw; tc.height = th;
+      tc.getContext('2d')!.drawImage(img, 0, 0, tw, th);
+      const thumbnail = tc.toDataURL('image/jpeg', 0.2);
+
+      canvas.toBlob((blob) => {
+        if (!blob) { reject(new Error('Canvas toBlob failed')); return; }
+        blob.arrayBuffer().then(buf => resolve({ bytes: new Uint8Array(buf), thumbnail, mimeType: 'image/jpeg' }));
+      }, 'image/jpeg', 0.82);
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
 
 const AVATAR_COLORS = ['#adc6ff', '#ffb595', '#4b8eff', '#66BB6A', '#EC407A', '#AB47BC'];
 function avatarColor(name: string) {
@@ -143,23 +176,35 @@ export default function ChatPage() {
     try {
       const mySecretKey = loadPrivateKey();
       if (!mySecretKey) throw new Error('Private key missing');
-      const fileBytes = new Uint8Array(await file.arrayBuffer());
+
+      let fileBytes: Uint8Array;
+      let thumbnail: string | undefined;
+      let mimeType: string | undefined;
+
+      if (type === 'image') {
+        const compressed = await compressAndThumbnail(file);
+        fileBytes = compressed.bytes;
+        thumbnail = compressed.thumbnail;
+        mimeType = compressed.mimeType;
+      } else {
+        fileBytes = new Uint8Array(await file.arrayBuffer());
+        mimeType = file.type || 'video/mp4';
+      }
+
       const { encryptedBytes, fileKey, fileNonce } = encryptFile(fileBytes);
       const { wrappedKey, keyNonce } = wrapFileKey(fileKey, otherUser.publicKey, mySecretKey);
-      const filename = `${me.uid}_${Date.now()}.enc`;
-      let mediaUrl: string;
-      if (type === 'image') {
-        const storageRef = ref(storage, `media/${conversationId}/${filename}`);
-        await uploadBytes(storageRef, encryptedBytes);
-        mediaUrl = await getDownloadURL(storageRef);
-      } else {
-        mediaUrl = await uploadEncryptedFile(encryptedBytes, filename);
-      }
+
+      // Store the storage PATH (not download URL) — getBlob() uses the path directly.
+      const storagePath = `media/${conversationId}/${me.uid}_${Date.now()}.enc`;
+      await uploadBytes(ref(storage, storagePath), encryptedBytes);
+
       const { ciphertext, nonce } = encryptMessage(`[${type}]`, otherUser.publicKey, mySecretKey);
       const now = Date.now();
       await addDoc(collection(db, 'conversations', conversationId!, 'messages'), {
         senderId: me.uid, type, ciphertext, nonce,
-        mediaUrl, wrappedKey, keyNonce, fileNonce, createdAt: now, readBy: [me.uid],
+        mediaUrl: storagePath, wrappedKey, keyNonce, fileNonce, mimeType,
+        ...(thumbnail ? { thumbnail } : {}),
+        createdAt: now, readBy: [me.uid],
       });
       await updateDoc(doc(db, 'conversations', conversationId!), {
         lastMessage: { type, createdAt: now, senderId: me.uid },
@@ -182,14 +227,14 @@ export default function ChatPage() {
       const fileBytes = new Uint8Array(await blob.arrayBuffer());
       const { encryptedBytes, fileKey, fileNonce } = encryptFile(fileBytes);
       const { wrappedKey, keyNonce } = wrapFileKey(fileKey, otherUser.publicKey, mySecretKey);
-      const storageRef = ref(storage, `media/${conversationId}/${me.uid}_${Date.now()}.voice.enc`);
-      await uploadBytes(storageRef, encryptedBytes);
-      const mediaUrl = await getDownloadURL(storageRef);
+      // Store storage PATH (not download URL) for reliable getBlob() decryption.
+      const storagePath = `media/${conversationId}/${me.uid}_${Date.now()}.voice.enc`;
+      await uploadBytes(ref(storage, storagePath), encryptedBytes);
       const { ciphertext, nonce } = encryptMessage('[voice]', otherUser.publicKey, mySecretKey);
       const now = Date.now();
       await addDoc(collection(db, 'conversations', conversationId!, 'messages'), {
         senderId: me.uid, type: 'audio', ciphertext, nonce,
-        mediaUrl, wrappedKey, keyNonce, fileNonce, duration,
+        mediaUrl: storagePath, wrappedKey, keyNonce, fileNonce, duration,
         mimeType: blob.type || 'audio/webm',
         createdAt: now, readBy: [me.uid],
       });

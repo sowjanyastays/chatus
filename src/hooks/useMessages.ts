@@ -15,7 +15,7 @@ export type Message = {
   wrappedKey?: string;
   keyNonce?: string;
   fileNonce?: string;
-  thumbnailUrl?: string;
+  thumbnail?: string;
   duration?: number;
   mimeType?: string;
   createdAt: number;
@@ -62,9 +62,9 @@ export function useMessages(conversationId: string, otherPublicKey: string) {
           wrappedKey: data.wrappedKey,
           keyNonce: data.keyNonce,
           fileNonce: data.fileNonce,
-          thumbnailUrl: data.thumbnailUrl,
           duration: data.duration,
           mimeType: data.mimeType,
+          thumbnail: data.thumbnail,
           createdAt: data.createdAt,
           readBy: data.readBy ?? [],
           ciphertext: data.ciphertext,
